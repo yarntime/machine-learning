@@ -1,0 +1,49 @@
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    name: tensorflow-worker
+    role: service
+  name: tensorflow-worker2-service
+spec:
+  ports:
+    - port: 2222
+      targetPort: 2222
+  selector:
+    name: tensorflow-worker2
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: worker2
+  labels:
+    name: tensorflow-worker2
+spec:
+  completions: 1
+  parallelism: 1
+  template:
+    metadata:
+      name: tensorflow-worker2
+      labels:
+        name: tensorflow-worker2
+        role: worker
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: ps
+          image: reg.skycloud.com:5000/tensorflow/tensorflow:latest
+          command: ["python", "/code/distribute.py"]
+          args:
+          - --ps_hosts=tensorflow-ps-service:2222
+          - --worker_hosts=tensorflow-worker1-service:2222,tensorflow-worker2-service:2222
+          - --job_name=worker
+          - --task_index=1
+          ports:
+          - containerPort: 2222
+          volumeMounts:
+          - name: tensor-persistent-storage
+            mountPath: /code
+      volumes:
+      - hostPath:
+          path: /code/distributeTensorflowExample/
+        name: tensor-persistent-storage

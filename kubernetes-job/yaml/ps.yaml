@@ -1,0 +1,46 @@
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    name: tensorflow-ps
+    role: service
+  name: tensorflow-ps-service
+spec:
+  ports:
+    - port: 2222
+      targetPort: 2222
+  selector:
+    name: tensorflow-ps
+---
+apiVersion: v1
+kind: ReplicationController
+metadata:
+  name: tensorflow-ps-rc
+spec:
+  replicas: 1
+  selector:
+    name: tensorflow-ps
+  template:
+    metadata:
+      labels:
+        name: tensorflow-ps
+        role: ps
+    spec:
+      containers:
+        - name: ps
+          image: reg.skycloud.com:5000/tensorflow/tensorflow:latest
+          command: ["python", "/code/distribute.py"]
+          args:
+          - --ps_hosts=tensorflow-ps-service:2222
+          - --worker_hosts=tensorflow-worker1-service:2222,tensorflow-worker2-service:2222
+          - --job_name=ps
+          - --task_index=0
+          ports:
+          - containerPort: 2222
+          volumeMounts:
+          - name: tensor-persistent-storage
+            mountPath: /code
+      volumes:
+      - hostPath:
+          path: /code/distributeTensorflowExample/
+        name: tensor-persistent-storage
