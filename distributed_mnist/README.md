@@ -16,11 +16,11 @@ python mnist.py --ps_hosts=192.168.254.44:2222 --worker_hosts=192.168.254.44:222
 
 ```
 
-存储的model在 traing_log 目录下， 
+存储的model在 trained_model 目录下， 
 
 ```
 拷贝model到版本2目录下：
-cp traing_log/* /tmp/monitored/2 -r
+cp trained_model/* /tmp/monitored/2 -r
 ```
 
 

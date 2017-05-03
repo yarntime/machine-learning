@@ -29,7 +29,7 @@ FLAGS = tf.app.flags.FLAGS
 
 IMAGE_PIXELS = 28
 
-logdir = "traing_log"
+logdir = "trained_model"
 
 
 def main(_):
