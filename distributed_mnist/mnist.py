@@ -25,11 +25,14 @@ tf.app.flags.DEFINE_string("data_dir", "MNIST_data", "Directory for storing mnis
 
 tf.app.flags.DEFINE_integer("batch_size", 100, "Training batch size")
 
+tf.app.flags.DEFINE_string("model_dir", "trained_model", "Directory for storing the trained model")
+
+tf.app.flags.DEFINE_string("log_dir", "training_log", "Directory for storing the training log")
+
 FLAGS = tf.app.flags.FLAGS
 
 IMAGE_PIXELS = 28
 
-logdir = "trained_model"
 
 
 def main(_):
@@ -83,7 +86,7 @@ def main(_):
 
             init_op = tf.global_variables_initializer()
 
-            sv = tf.train.Supervisor(is_chief=(FLAGS.task_index == 0), logdir="train_logs", init_op=init_op,
+            sv = tf.train.Supervisor(is_chief=(FLAGS.task_index == 0), logdir=FLAGS.log_dir, init_op=init_op,
                                      summary_op=summary_op, saver=saver, global_step=global_step, save_model_secs=600)
             mnist = input_data.read_data_sets(FLAGS.data_dir, one_hot=True)
             with sv.managed_session(server.target) as sess:
@@ -121,7 +124,7 @@ def main(_):
                         outputs={'scores': tensor_info_y},
                         method_name=signature_constants.PREDICT_METHOD_NAME)
                 
-                    builder = saved_model_builder.SavedModelBuilder(logdir)
+                    builder = saved_model_builder.SavedModelBuilder(FLAGS.model_dir)
                     legacy_init_op = tf.group(tf.tables_initializer(), name='legacy_init_op')
                 
                     builder.add_meta_graph_and_variables(sess,
