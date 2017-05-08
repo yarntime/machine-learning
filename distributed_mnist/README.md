@@ -29,3 +29,9 @@ cp trained_model/* /tmp/monitored/2 -r
 ```
 bazel-bin/tensorflow_serving/model_servers/tensorflow_model_server --enable_batching --port=9000 --model_name=mnist --model_base_path=/tmp/monitored/
 ```
+
+测试训练好的模型：
+
+```
+bazel-bin/tensorflow_serving/example/mnist_client --num_tests=1000 --server=localhost:9000 --concurrency=10
+```
