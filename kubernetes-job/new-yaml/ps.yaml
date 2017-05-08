@@ -1,0 +1,54 @@
+apiVersion: v1
+kind: ReplicationController
+metadata:
+  name: tensorflow-ps-rc
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        name: tensorflow-ps
+        role: ps
+        job: mnist
+    spec:
+      nodeName: minion1
+      containers:
+        - name: ps
+          image: reg.skycloud.com:5000/tensorflow/tensorflow:v2
+          command: ["bootstrap"]
+          args:
+          - --ps_num=1
+          - --worker_num=2
+          - --role=ps
+          - --job_name=mnist
+          - --cmd=python /code/mnist.py --data_dir=/input/ --model_dir=/output/trained_model --log_dir=/tmp/training_log
+          env:
+            - name: KUBERNETES_URL
+              value: "192.168.254.42:8080"
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          ports:
+          - containerPort: 2222
+          volumeMounts:
+          - name: code
+            mountPath: /code
+          - name: output
+            mountPath: /output/
+          - name: input
+            mountPath: /input/
+      volumes:
+      - hostPath:
+          path: /code/distributeTensorflowExample/
+        name: code
+      - hostPath:
+          path: /input/MNIST_data/
+        name: input
+      - hostPath:
+          path: /tmp/
+        name: output
