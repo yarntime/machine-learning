@@ -1,1 +1,1 @@
-# tensorflow-example
+# deep learning assets
