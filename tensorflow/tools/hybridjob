@@ -1,0 +1,110 @@
+#!/usr/bin/python
+import urllib2
+import os
+import json
+import time
+import subprocess
+import tensorflow as tf
+
+namespace = os.environ["NAMESPACE"]
+localIp = os.environ["POD_IP"]
+logdir = os.environ["LOG_DIR"]
+
+tf.app.flags.DEFINE_string("job_name", "default", "Name of the job")
+tf.app.flags.DEFINE_string("role", "ps", "Role of the job")
+tf.app.flags.DEFINE_integer("retry_times", 500, "retry times until job ready")
+tf.app.flags.DEFINE_string("cmd", "python mnist.py --model_dir=/tmp/trained_model --log_dir=/tmp/training_log ", "Cmd to start the job")
+
+FLAGS = tf.app.flags.FLAGS
+
+BASE_CMD = "http://hybridjob.kube-system.svc:8080/api/v1/namespaces/%s/hybridjobs/%s/status"
+
+def sendRequest(baseurl):
+    
+    url = baseurl
+    
+    print("request: " + url)
+    
+    request = urllib2.Request(url)
+    request.add_header("Content-Type", "application/json")
+
+    res_data = urllib2.urlopen(request)
+    response = res_data.read()
+    
+    print("response: " + response)
+    
+    return response
+
+def getHybridJobStatus():
+
+    url = BASE_CMD%(namespace, FLAGS.job_name)
+    response = sendRequest(url)
+    status = json.loads(response)
+
+    if(status["phase"] != "Ready"):
+        print("hybridjob %s/%s is not ready."%(namespace, FLAGS.job_name))
+        return False, status
+    return True, status
+        
+def getRoleHosts(role, status):
+    taskIndex = -1
+    hosts = ""
+    roleHosts = status["hosts"][role].split(',')
+    for i in range(0, len(roleHosts)):
+        hosts = hosts + roleHosts[i] + ":2222,"
+        if(localIp == roleHosts[i]):
+            taskIndex = i
+    return taskIndex, hosts[:-1]
+
+def execCommand(psStr, workerStr, taskIndex):
+    logPath = logdir + "/" + time.strftime('%Y-%m-%dT%H:%M:%S',time.localtime(time.time()))
+    print("logdir: " + logPath)
+    cmd = "%s --log_dir=%s --ps_hosts=%s --worker_hosts=%s --task_index=%d --job_name=%s"%(FLAGS.cmd, logPath, psStr, workerStr, taskIndex, FLAGS.role)
+    print("the cmd to start the job: " + cmd)
+
+    path = "%s/%s/%d"%(logPath, FLAGS.role, taskIndex)
+    if (os.path.exists(path) != True): 
+        os.makedirs(path)
+    f = file(path + "/log","w+")
+  
+    try:
+        subp = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
+        while subp.poll()==None:
+            log = subp.stdout.readline()
+            print(log)
+            f.write(log)
+    finally:
+        f.close()
+
+if __name__=="__main__":
+
+    isHybridJobReady = False
+    taskIndex = 0
+    psStr = ""
+    workerStr = ""
+  
+    for i in range(0, FLAGS.retry_times):
+
+      time.sleep(3)
+      isHybridJobReady, status = getHybridJobStatus()
+
+      if (isHybridJobReady == False):
+          print("failed to prepare jobs, try it later.")
+          continue
+
+      index, psStr = getRoleHosts("ps", status)
+      if index != -1:
+          taskIndex = index
+              
+      index, workerStr = getRoleHosts("worker", status)
+      if index != -1:
+          taskIndex = index
+
+      isHybridJobReady = True
+      break
+	  
+    if (isHybridJobReady == True):
+        execCommand(psStr, workerStr, taskIndex)
+    else:
+        print("failed to prepare parametes to run tf job.")
+
