@@ -1,6 +1,5 @@
 #!/usr/bin/python
-
-from kubernetes import client,config
+import urllib2
 import os
 import json
 import time
@@ -9,95 +8,108 @@ import tensorflow as tf
 
 namespace = os.environ["NAMESPACE"]
 localIp = os.environ["POD_IP"]
+logdir = os.environ["LOG_DIR"]
 
 tf.app.flags.DEFINE_string("job_name", "default", "Name of the job")
-tf.app.flags.DEFINE_integer("ps_num", 1, "Number of the ps")
-tf.app.flags.DEFINE_integer("worker_num", 2, "Number of the worker")
 tf.app.flags.DEFINE_string("role", "ps", "Role of the job")
+tf.app.flags.DEFINE_integer("retry_times", 500, "retry times until job ready")
 tf.app.flags.DEFINE_string("cmd", "python mnist.py --model_dir=/tmp/trained_model --log_dir=/tmp/training_log ", "Cmd to start the job")
 
 FLAGS = tf.app.flags.FLAGS
 
-client.Configuration().host=os.environ["KUBERNETES_URL"]
-v1 = client.CoreV1Api()
+BASE_CMD = "http://hybridjob.kube-system.svc:8080/api/v1/namespaces/%s/hybridjobs/%s/status"
 
-def getPSStr():
-  psStr = ""
+def sendRequest(baseurl):
+    
+    url = baseurl
+    
+    print("request: " + url)
+    
+    request = urllib2.Request(url)
+    request.add_header("Content-Type", "application/json")
 
-  taskIndex = -1
+    res_data = urllib2.urlopen(request)
+    response = res_data.read()
+    
+    print("response: " + response)
+    
+    return response
 
-  ps_pods = v1.list_namespaced_pod(namespace, label_selector="role=ps,job=" + FLAGS.job_name)
-  items = ps_pods.items
-  if (len(items) != FLAGS.ps_num):
-    return False, "", taskIndex
-  for i in range(0, len(items)):
-    try:
-      podIp = items[i].status.pod_ip
-      if (podIp == localIp):
-        taskIndex = i
-      psStr = psStr + podIp + ":2222,"
-    except Exception as err:
-      return False, "", taskIndex
-  return True, psStr[:-1], taskIndex
+def getHybridJobStatus():
 
-def getWorkerStr():
-  workerStr = ""
+    url = BASE_CMD%(namespace, FLAGS.job_name)
+    response = sendRequest(url)
+    status = json.loads(response)
 
-  taskIndex = -1
-
-  worker_pods = v1.list_namespaced_pod(namespace, label_selector="role=worker,job=" + FLAGS.job_name)
-  items = worker_pods.items
-  if (len(items) != FLAGS.worker_num):
-    return False, "", taskIndex
-  for i in range(0, len(items)):
-    try:
-      podIp = items[i].status.pod_ip
-      if (podIp == localIp):
-        taskIndex = i
-      workerStr = workerStr + podIp + ":2222,"
-    except Exception as err:
-      print(err)
-      return False, "", taskIndex
-  return True, workerStr[:-1], taskIndex
+    if(status["phase"] != "Ready"):
+        print("hybridjob %s/%s is not ready."%(namespace, FLAGS.job_name))
+        return False, status
+    return True, status
+        
+def getRoleHosts(role, status):
+    taskIndex = -1
+    hosts = ""
+    roleHosts = status["hosts"][role].split(',')
+    for i in range(0, len(roleHosts)):
+        hosts = hosts + roleHosts[i] + ":2222,"
+        if(localIp == roleHosts[i]):
+            taskIndex = i
+    return taskIndex, hosts[:-1]
 
 def execCommand(psStr, workerStr, taskIndex):
-  cmd = "%s --ps_hosts=%s --worker_hosts=%s --task_index=%d --job_name=%s"%(FLAGS.cmd, psStr, workerStr, taskIndex, FLAGS.role)
+  logPath = logdir + "/" + time.strftime('%Y-%m-%dT%H:%M:%S',time.localtime(time.time()))
+  print("logdir: " + logPath)
+  cmd = "%s --log_dir=%s --ps_hosts=%s --worker_hosts=%s --task_index=%d --job_name=%s"%(FLAGS.cmd, logPath, psStr, workerStr, taskIndex, FLAGS.role)
   print("the cmd to start the job: " + cmd)
-  subp = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
-  while subp.poll()==None:
-    print subp.stdout.readline()
-  print subp.returncode
+
+  path = "%s/%s/%d"%(logPath, FLAGS.role, taskIndex)
+  if (os.path.exists(path) != True): 
+    os.makedirs(path)
+  f = file(path + "/log","w+")
+  
+  try:
+    subp = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
+    while subp.poll()==None:
+      log = subp.stdout.readline()
+      print(log)
+      f.write(log)
+  finally:
+    f.close()
 
 if __name__=="__main__":
 
-  isParamReady = False
+  isHybridJobReady = False
   taskIndex = 0
   psStr = ""
   workerStr = ""
   
-  for i in range(0, 100):
+  for i in range(0, FLAGS.retry_times):
 
     time.sleep(3)
+    try:
+        isHybridJobReady, status = getHybridJobStatus()
+    except:
+        print("failed to query job status.")
+        continue
 
-    isPSReady, psStr, psIndex = getPSStr()
-    if (isPSReady == False):
-      print("failed to prepare PS, try it later.")
+    if (isHybridJobReady == False):
+      print("failed to prepare jobs, try it later.")
       continue
-    if (psIndex != -1):
-      taskIndex = psIndex
 
-    isWorkerReady, workerStr, workerIndex = getWorkerStr()
-    if (isWorkerReady == False):
-      print("failed to prepare Worker, try it later.")
-      continue
-    if (workerIndex != -1):
-      taskIndex = workerIndex
+    index, psStr = getRoleHosts("ps", status)
+    if index != -1:
+        taskIndex = index
+              
+    index, workerStr = getRoleHosts("worker", status)
+    if index != -1:
+        taskIndex = index
 
-    isParamReady = True
+    isHybridJobReady = True
 
     break
 
-  if (isParamReady == True):
+  if (isHybridJobReady == True):
     execCommand(psStr, workerStr, taskIndex)
   else:
     print("failed to prepare parametes to run tf job.")
+
