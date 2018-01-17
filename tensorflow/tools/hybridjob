@@ -57,54 +57,59 @@ def getRoleHosts(role, status):
     return taskIndex, hosts[:-1]
 
 def execCommand(psStr, workerStr, taskIndex):
-    logPath = logdir + "/" + time.strftime('%Y-%m-%dT%H:%M:%S',time.localtime(time.time()))
-    print("logdir: " + logPath)
-    cmd = "%s --log_dir=%s --ps_hosts=%s --worker_hosts=%s --task_index=%d --job_name=%s"%(FLAGS.cmd, logPath, psStr, workerStr, taskIndex, FLAGS.role)
-    print("the cmd to start the job: " + cmd)
+  logPath = logdir + "/" + time.strftime('%Y-%m-%dT%H:%M:%S',time.localtime(time.time()))
+  print("logdir: " + logPath)
+  cmd = "%s --log_dir=%s --ps_hosts=%s --worker_hosts=%s --task_index=%d --job_name=%s"%(FLAGS.cmd, logPath, psStr, workerStr, taskIndex, FLAGS.role)
+  print("the cmd to start the job: " + cmd)
 
-    path = "%s/%s/%d"%(logPath, FLAGS.role, taskIndex)
-    if (os.path.exists(path) != True): 
-        os.makedirs(path)
-    f = file(path + "/log","w+")
+  path = "%s/%s/%d"%(logPath, FLAGS.role, taskIndex)
+  if (os.path.exists(path) != True): 
+    os.makedirs(path)
+  f = file(path + "/log","w+")
   
-    try:
-        subp = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
-        while subp.poll()==None:
-            log = subp.stdout.readline()
-            print(log)
-            f.write(log)
-    finally:
-        f.close()
+  try:
+    subp = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
+    while subp.poll()==None:
+      log = subp.stdout.readline()
+      print(log)
+      f.write(log)
+  finally:
+    f.close()
 
 if __name__=="__main__":
 
-    isHybridJobReady = False
-    taskIndex = 0
-    psStr = ""
-    workerStr = ""
+  isHybridJobReady = False
+  taskIndex = 0
+  psStr = ""
+  workerStr = ""
   
-    for i in range(0, FLAGS.retry_times):
+  for i in range(0, FLAGS.retry_times):
 
-      time.sleep(3)
-      isHybridJobReady, status = getHybridJobStatus()
+    time.sleep(3)
+    try:
+        isHybridJobReady, status = getHybridJobStatus()
+    except:
+        print("failed to query job status.")
+        continue
 
-      if (isHybridJobReady == False):
-          print("failed to prepare jobs, try it later.")
-          continue
+    if (isHybridJobReady == False):
+      print("failed to prepare jobs, try it later.")
+      continue
 
-      index, psStr = getRoleHosts("ps", status)
-      if index != -1:
-          taskIndex = index
+    index, psStr = getRoleHosts("ps", status)
+    if index != -1:
+        taskIndex = index
               
-      index, workerStr = getRoleHosts("worker", status)
-      if index != -1:
-          taskIndex = index
+    index, workerStr = getRoleHosts("worker", status)
+    if index != -1:
+        taskIndex = index
 
-      isHybridJobReady = True
-      break
-	  
-    if (isHybridJobReady == True):
-        execCommand(psStr, workerStr, taskIndex)
-    else:
-        print("failed to prepare parametes to run tf job.")
+    isHybridJobReady = True
+
+    break
+
+  if (isHybridJobReady == True):
+    execCommand(psStr, workerStr, taskIndex)
+  else:
+    print("failed to prepare parametes to run tf job.")
 
