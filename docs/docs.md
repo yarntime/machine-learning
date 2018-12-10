@@ -2,3 +2,5 @@
 ---
 
 * https://www.kaggle.com/shivamb/a-very-comprehensive-tutorial-nn-cnn?scriptVersionId=3749898
+
+* http://paulbourke.net/miscellaneous/correlate/ (CrossCorrelation algorithm)
