@@ -14,7 +14,7 @@ import urllib.request
 import shutil
 
 # Root directory of the project
-ROOT_DIR = os.path.abspath("../../")
+ROOT_DIR = os.path.abspath("./")
 
 # Import Mask RCNN
 sys.path.append(ROOT_DIR)  # To find local version of the library
@@ -22,7 +22,7 @@ from mrcnn.config import Config
 from mrcnn import model as modellib, utils
 
 # Path to trained weights file
-ALI_MODEL_PATH = os.path.join(ROOT_DIR, "./mask_rcnn_coco.h5")
+ALI_MODEL_PATH = os.path.join(ROOT_DIR, "./mask_rcnn_ali.h5")
 
 ############################################################
 #  Configurations
@@ -53,6 +53,7 @@ class AliConfig(Config):
 ############################################################
 
 class AliDataset(utils.Dataset):
+        
     def load_ali(self, dataset_dir, sub_dir):
 
         coco = COCO("{}/train_no_poly.json".format(dataset_dir))
@@ -62,30 +63,26 @@ class AliDataset(utils.Dataset):
         # Load all classes or a subset?
         class_ids = sorted(coco.getCatIds())
 
-        # All images or a subset?
-        if class_ids:
-            image_ids = []
-            for id in class_ids:
-                image_ids.extend(list(coco.getImgIds(catIds=[id])))
-            # Remove duplicates
-            image_ids = list(set(image_ids))
-        else:
-            # All images
-            image_ids = list(coco.imgs.keys())
+        image_ids = list(coco.imgs.keys())
 
         # Add classes
         for i in class_ids:
-            self.add_class("coco", i, coco.loadCats(i)[0]["name"])
+            self.add_class("ali", i, coco.loadCats(i)[0]["name"])
 
         # Add images
+        cur = 0
         for i in image_ids:
+            if cur != i:
+                print('missing image id: ' + str(cur))
+                cur = cur + 1
             self.add_image(
-                "coco", image_id=i,
+                "ali", image_id=i,
                 path=os.path.join(image_dir, coco.imgs[i]['file_name']),
                 width=coco.imgs[i]["width"],
                 height=coco.imgs[i]["height"],
                 annotations=coco.loadAnns(coco.getAnnIds(
                     imgIds=[i], catIds=class_ids, iscrowd=None)))
+            cur = cur + 1
         return coco
 
     def load_mask(self, image_id):
