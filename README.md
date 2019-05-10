@@ -1,1 +1,1 @@
-# deep learning assets
+# machine learning assets
